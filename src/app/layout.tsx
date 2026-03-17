@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import "./globals.css"
+import { AppSessionProvider } from "./_components/session-provider"
 
 export const metadata: Metadata = {
   title: "Stock Analyze",
@@ -14,7 +15,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark" suppressHydrationWarning>
       <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
-        {children}
+        <AppSessionProvider>{children}</AppSessionProvider>
       </body>
     </html>
   )

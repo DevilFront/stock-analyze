@@ -1,11 +1,12 @@
  "use client"
 
-import { useState, FormEvent } from "react"
+import { useEffect, useState, FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { AnalysisLoading } from "../_components/analysis-loading"
+import { signIn, signOut, useSession } from "next-auth/react"
 
 function ReportSearchForm() {
   const [symbol, setSymbol] = useState("")
@@ -42,6 +43,115 @@ function ReportSearchForm() {
   )
 }
 
+function AccountPanel() {
+  const { data: session, status } = useSession()
+  const [credits, setCredits] = useState<number | null>(null)
+  const [reportCount, setReportCount] = useState<number | null>(null)
+  const [freeUsed, setFreeUsed] = useState<boolean | null>(null)
+  const [billingLoading, setBillingLoading] = useState(false)
+
+  useEffect(() => {
+    const run = async () => {
+      if (status !== "authenticated") {
+        setCredits(null)
+        setReportCount(null)
+        setFreeUsed(null)
+        return
+      }
+      const res = await fetch("/api/me")
+      if (!res.ok) return
+      const json = await res.json()
+      setCredits(json.credits)
+      setReportCount(json.reportCount)
+      setFreeUsed(json.freeReportUsed)
+    }
+    run()
+  }, [status])
+
+  const handleTopup = async () => {
+    setBillingLoading(true)
+    try {
+      const res = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pack: "starter" }),
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const { url } = await res.json()
+      if (url) window.location.href = url
+    } finally {
+      setBillingLoading(false)
+    }
+  }
+
+  return (
+    <Card className="border-slate-800 bg-slate-900/70 p-5">
+      <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
+        계정
+      </div>
+      <div className="mt-3 space-y-3 text-sm text-slate-300">
+        {status === "loading" ? (
+          <div className="text-xs text-slate-500">불러오는 중...</div>
+        ) : status !== "authenticated" ? (
+          <div className="flex flex-col gap-2">
+            <div className="text-xs text-slate-500">
+              리포트 생성은 로그인 후 가능합니다.
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={() => signIn(undefined, { callbackUrl: "/" })}>
+                로그인
+              </Button>
+              <Button size="sm" variant="outline" className="border-slate-700" asChild>
+                <a href="/signup">회원가입</a>
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="text-xs text-slate-400">
+              {session.user?.email ?? "로그인됨"}
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="rounded-md bg-slate-900/60 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Credits</div>
+                <div className="mt-1 text-base font-semibold text-slate-100">
+                  {credits ?? "–"}
+                </div>
+              </div>
+              <div className="rounded-md bg-slate-900/60 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Reports</div>
+                <div className="mt-1 text-base font-semibold text-slate-100">
+                  {reportCount ?? "–"}
+                </div>
+              </div>
+              <div className="rounded-md bg-slate-900/60 px-3 py-2">
+                <div className="text-[10px] uppercase tracking-wider text-slate-500">Free</div>
+                <div className="mt-1 text-base font-semibold text-slate-100">
+                  {freeUsed == null ? "–" : freeUsed ? "사용" : "가능"}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleTopup} disabled={billingLoading || credits == null}>
+                {billingLoading ? "이동 중..." : "크레딧 충전(Starter)"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-slate-700"
+                onClick={() => signOut({ callbackUrl: "/" })}
+              >
+                로그아웃
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}
+
 export default function DashboardPage() {
   return (
     <div className="grid h-full gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
@@ -70,6 +180,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="flex flex-col gap-4">
+        <AccountPanel />
         <Card className="border-slate-800 bg-slate-900/70 p-5">
           <div className="text-xs font-medium uppercase tracking-[0.2em] text-slate-500">
             최근 본 리포트 (샘플)

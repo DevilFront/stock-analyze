@@ -88,16 +88,56 @@ export async function fetchCompanyRaw(
 export async function fetchCompanyReport(
   symbol: string,
 ): Promise<ReadableStream<Uint8Array>> {
+  const deviceId = getOrCreateDeviceId()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (deviceId) headers["x-device-id"] = deviceId
   const res = await fetch("/api/ai", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ symbol } satisfies CompanyReportRequest),
   })
 
   if (!res.ok || !res.body) {
+    const reason = await safeReadText(res)
+    if (res.status === 401) throw new Error("로그인이 필요합니다.")
+    if (res.status === 402) throw new Error("크레딧이 부족합니다. 충전 후 다시 시도해주세요.")
+    if (res.status === 403 && reason.includes("FREE_ALREADY_USED_ON_DEVICE")) {
+      throw new Error("무료 1회는 이미 사용된 디바이스입니다. 크레딧 충전 후 이용해주세요.")
+    }
+    if (res.status === 429) throw new Error("무료 사용 요청이 많습니다. 잠시 후 다시 시도해주세요.")
     throw new Error("AI 리포트 생성 요청에 실패했습니다.")
   }
 
   return res.body
+}
+
+async function safeReadText(res: Response): Promise<string> {
+  try {
+    return await res.text()
+  } catch {
+    return ""
+  }
+}
+
+function getOrCreateDeviceId(): string {
+  if (typeof document === "undefined") return ""
+  const key = "sa_device_id"
+  const existing = readCookie(key)
+  if (existing) return existing
+  const v = crypto.randomUUID()
+  document.cookie = `${key}=${encodeURIComponent(v)}; Path=/; Max-Age=${60 * 60 * 24 * 365 * 2}; SameSite=Lax`
+  return v
+}
+
+function readCookie(name: string): string | null {
+  const cookies = document.cookie ? document.cookie.split("; ") : []
+  for (const c of cookies) {
+    const idx = c.indexOf("=")
+    if (idx === -1) continue
+    const k = c.slice(0, idx)
+    if (k !== name) continue
+    return decodeURIComponent(c.slice(idx + 1))
+  }
+  return null
 }
 

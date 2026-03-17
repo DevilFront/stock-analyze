@@ -1,23 +1,173 @@
 import { NextRequest } from "next/server"
 import OpenAI from "openai"
 import { getCompanyRaw } from "@/app/_lib/company-data"
+import { auth } from "@/auth"
+import { db } from "@/db"
+import {
+  creditLedger,
+  deviceFreeClaims,
+  ipDailyFreeClaims,
+  reports,
+  userCredits,
+} from "@/db/schema"
+import { and, eq } from "drizzle-orm"
+import crypto from "crypto"
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-export const runtime = "edge"
+export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   if (!process.env.OPENAI_API_KEY) {
     return new Response("OPENAI_API_KEY is not set", { status: 500 })
   }
 
+  // 인증 필수
+  const session = await auth()
+  const userId = (session?.user as any)?.id as string | undefined
+  if (!userId) {
+    return new Response("UNAUTHORIZED", { status: 401 })
+  }
+
+  const deviceId = (req.headers.get("x-device-id") ?? "").trim()
+  const ip =
+    (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") ||
+    ""
+
   const body = (await req.json()) as {
     symbol: string
   }
 
   const symbol = (body.symbol ?? "").trim() || "005930"
+
+  // 크레딧/무료1회 정책
+  const REPORT_COST = 10
+  const today = new Date()
+  const day = today.toISOString().slice(0, 10) // YYYY-MM-DD
+
+  const deviceIdHash = deviceId
+    ? crypto.createHash("sha256").update(deviceId).digest("hex")
+    : ""
+
+  const creditRow =
+    (await db.query.userCredits.findFirst({
+      where: eq(userCredits.userId, userId),
+    })) ?? null
+
+  // 첫 로그인/마이그레이션 대비: row 없으면 생성
+  if (!creditRow) {
+    await db
+      .insert(userCredits)
+      .values({ userId, balance: 0, freeReportUsed: false })
+      .onConflictDoNothing()
+  }
+
+  const afterCreditRow =
+    creditRow ??
+    (await db.query.userCredits.findFirst({
+      where: eq(userCredits.userId, userId),
+    }))
+
+  if (!afterCreditRow) {
+    return new Response("CREDIT_ROW_INIT_FAILED", { status: 500 })
+  }
+
+  let wasFree = false
+  let costCredits = 0
+
+  if (!afterCreditRow.freeReportUsed) {
+    // 악용 방지 1) 디바이스 1회 제한 (같은 디바이스로 다른 계정 무료 이용 방지)
+    if (deviceIdHash) {
+      const existingDevice = await db.query.deviceFreeClaims.findFirst({
+        where: eq(deviceFreeClaims.deviceIdHash, deviceIdHash),
+      })
+      if (existingDevice && existingDevice.firstUserId && existingDevice.firstUserId !== userId) {
+        // 무료는 차단. 크레딧이 있으면 유료로 진행, 없으면 결제 유도.
+        if (afterCreditRow.balance < REPORT_COST) {
+          return new Response("FREE_ALREADY_USED_ON_DEVICE", { status: 403 })
+        }
+      }
+    }
+
+    // 악용 방지 2) IP 일일 무료 발급 상한(간단 방어)
+    if (ip) {
+      const ipRow = await db.query.ipDailyFreeClaims.findFirst({
+        where: and(eq(ipDailyFreeClaims.ip, ip), eq(ipDailyFreeClaims.day, day as any)),
+      })
+      if (ipRow && ipRow.count >= 5) {
+        if (afterCreditRow.balance < REPORT_COST) {
+          return new Response("FREE_LIMIT_REACHED", { status: 429 })
+        }
+      }
+    }
+
+    // 무료로 처리
+    wasFree = true
+    costCredits = 0
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(userCredits)
+        .set({ freeReportUsed: true, updatedAt: new Date() })
+        .where(eq(userCredits.userId, userId))
+
+      await tx.insert(creditLedger).values({
+        userId,
+        delta: 0,
+        reason: "FREE_REPORT",
+        metadata: { symbol },
+      })
+
+      if (deviceIdHash) {
+        await tx
+          .insert(deviceFreeClaims)
+          .values({
+            deviceIdHash,
+            firstUserId: userId,
+            firstIp: ip || null,
+            userAgent: req.headers.get("user-agent"),
+          })
+          .onConflictDoNothing()
+      }
+
+      if (ip) {
+        const existing = await tx.query.ipDailyFreeClaims.findFirst({
+          where: and(eq(ipDailyFreeClaims.ip, ip), eq(ipDailyFreeClaims.day, day as any)),
+        })
+        if (!existing) {
+          await tx.insert(ipDailyFreeClaims).values({ ip, day: day as any, count: 1 })
+        } else {
+          await tx
+            .update(ipDailyFreeClaims)
+            .set({ count: existing.count + 1, updatedAt: new Date() })
+            .where(and(eq(ipDailyFreeClaims.ip, ip), eq(ipDailyFreeClaims.day, day as any)))
+        }
+      }
+    })
+  } else {
+    // 유료: 크레딧 차감
+    if (afterCreditRow.balance < REPORT_COST) {
+      return new Response("INSUFFICIENT_CREDITS", { status: 402 })
+    }
+    wasFree = false
+    costCredits = REPORT_COST
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(userCredits)
+        .set({ balance: afterCreditRow.balance - REPORT_COST, updatedAt: new Date() })
+        .where(eq(userCredits.userId, userId))
+      await tx.insert(creditLedger).values({
+        userId,
+        delta: -REPORT_COST,
+        reason: "REPORT_SPEND",
+        metadata: { symbol },
+      })
+    })
+  }
 
   const company = await getCompanyRaw(symbol)
 
@@ -191,6 +341,7 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
   })
 
   const encoder = new TextEncoder()
+  let fullText = ""
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -198,9 +349,23 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
         for await (const chunk of response) {
           const content = chunk.choices[0]?.delta?.content
           if (content) {
+            fullText += content
             controller.enqueue(encoder.encode(content))
           }
         }
+
+        // 생성 완료 후 저장 (스트리밍 UX 유지)
+        await db.insert(reports).values({
+          userId,
+          symbol,
+          costCredits,
+          wasFree,
+          promptVersion: "v1",
+          model: "gpt-4o-mini",
+          markdown: fullText,
+          meta: { ip: ip || null },
+        })
+
         controller.close()
       } catch (err) {
         controller.error(err)
