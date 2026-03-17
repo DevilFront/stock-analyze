@@ -127,3 +127,42 @@
     @apply font-sans;
   }
 }
+
+/* 리포트 본문: 스타일 강제 적용 (md처럼 보이지 않도록) */
+.report-body {
+  color: rgb(241 245 249);
+  font-family: inherit;
+}
+.report-body h1,
+.report-body h2,
+.report-body h3 {
+  color: rgb(248 250 252);
+  font-weight: 600;
+}
+.report-body p,
+.report-body li {
+  color: rgb(241 245 249);
+}
+.report-body strong {
+  color: rgb(165 243 252);
+  font-weight: 700;
+}
+.report-body table {
+  color: rgb(203 213 225);
+}
+.report-body a {
+  color: rgb(56 189 248);
+}
+.report-prose p + p {
+  margin-top: 0.75rem;
+}
+.report-prose p + ul,
+.report-prose p + ol,
+.report-prose ul + p,
+.report-prose ol + p {
+  margin-top: 0.75rem;
+}
+.report-prose h2 + p,
+.report-prose h3 + p {
+  margin-top: 0.5rem;
+}
