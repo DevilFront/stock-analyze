@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16
+    container_name: stock_analyze_db
+    environment:
+      POSTGRES_USER: stock
+      POSTGRES_PASSWORD: stock
+      POSTGRES_DB: stock_analyze
+    ports:
+      - "5432:5432"
+    volumes:
+      - stock_analyze_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stock -d stock_analyze"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  adminer:
+    image: adminer:4
+    container_name: stock_analyze_adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  stock_analyze_pg:
+

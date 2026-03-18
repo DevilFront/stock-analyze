@@ -1,12 +1,14 @@
 import { NextRequest } from "next/server"
-import { stripe } from "@/app/_lib/stripe"
-import { db } from "@/db"
+import { getStripe } from "@/app/_lib/stripe"
+import { getDb } from "@/db"
 import { creditLedger, creditTopups, userCredits } from "@/db/schema"
 import { eq } from "drizzle-orm"
 
 export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
+  const db = getDb()
+  const stripe = getStripe()
   const secret = process.env.STRIPE_WEBHOOK_SECRET
   if (!secret) return new Response("STRIPE_WEBHOOK_SECRET is not set", { status: 500 })
 

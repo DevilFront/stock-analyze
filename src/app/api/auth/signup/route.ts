@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { db } from "@/db"
+import { getDb } from "@/db"
 import { users, userPasswords, userCredits } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import bcrypt from "bcryptjs"
@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs"
 export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
+  const db = getDb()
   const body = (await req.json()) as { email?: string; password?: string; name?: string }
   const email = (body.email ?? "").trim().toLowerCase()
   const password = body.password ?? ""

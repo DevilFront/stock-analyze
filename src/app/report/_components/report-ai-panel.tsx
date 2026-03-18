@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, isValidElement } from "react"
 import ReactMarkdown from "react-markdown"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -50,8 +50,8 @@ function getSectionIcon(title: string) {
 function flattenMarkdownChildren(children: React.ReactNode): string {
   if (typeof children === "string") return children
   if (Array.isArray(children)) return children.map(flattenMarkdownChildren).join("")
-  if (children && typeof children === "object" && "props" in children) {
-    const next = (children as React.ReactElement).props?.children
+  if (children && isValidElement(children)) {
+    const next = (children as React.ReactElement<{ children?: React.ReactNode }>).props?.children
     return next != null ? flattenMarkdownChildren(next) : ""
   }
   return ""

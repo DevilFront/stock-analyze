@@ -1,4 +1,13 @@
 import type { CompanyRawResponse } from "@/app/_lib/company-api"
+import { getDb } from "@/db"
+import {
+  announcements,
+  companies,
+  financialQuarterly,
+  financialYearly,
+  newsItems,
+} from "@/db/schema"
+import { desc, eq } from "drizzle-orm"
 
 const MOCK_DATA: Record<string, CompanyRawResponse> = {
   "005930": {
@@ -119,6 +128,8 @@ export async function getCompanyRaw(
   symbol: string,
 ): Promise<CompanyRawResponse> {
   const key = (symbol || "").trim() || "005930"
+  const dbData = await getCompanyRawFromDb(key)
+  if (dbData) return dbData
   const data = MOCK_DATA[key]
 
   if (!data) {
@@ -126,5 +137,95 @@ export async function getCompanyRaw(
   }
 
   return data
+}
+
+async function getCompanyRawFromDb(symbol: string): Promise<CompanyRawResponse | null> {
+  try {
+    const db = getDb()
+    const c = await db.query.companies.findFirst({
+      where: eq(companies.symbol, symbol),
+    })
+    if (!c) return null
+
+    const q = await db
+      .select()
+      .from(financialQuarterly)
+      .where(eq(financialQuarterly.symbol, symbol))
+      .orderBy(desc(financialQuarterly.period))
+      .limit(8)
+
+    const y = await db
+      .select()
+      .from(financialYearly)
+      .where(eq(financialYearly.symbol, symbol))
+      .orderBy(desc(financialYearly.year))
+      .limit(5)
+
+    const anns = await db
+      .select()
+      .from(announcements)
+      .where(eq(announcements.symbol, symbol))
+      .orderBy(desc(announcements.createdAt))
+      .limit(20)
+
+    const news = await db
+      .select()
+      .from(newsItems)
+      .where(eq(newsItems.symbol, symbol))
+      .orderBy(desc(newsItems.publishedAt))
+      .limit(20)
+
+    return {
+      profile: {
+        symbol: c.symbol,
+        name: c.name,
+        sector: c.sector,
+        marketCap: Number(c.marketCap ?? 0),
+        currency: c.currency ?? "KRW",
+      },
+      quarterly: q
+        .filter((row) => /^\d{4}\sQ[1-4]$/.test(row.period))
+        .map((row) => ({
+        period: row.period,
+        revenue: Number(row.revenue ?? 0),
+        operatingIncome: Number(row.operatingIncome ?? 0),
+        netIncome: Number(row.netIncome ?? 0),
+        eps: Number(row.eps ?? 0),
+      })),
+      yearly: y
+        .filter((row) => /^\d{4}$/.test(row.year))
+        .map((row) => ({
+        year: row.year,
+        revenue: Number(row.revenue ?? 0),
+        operatingIncome: Number(row.operatingIncome ?? 0),
+        netIncome: Number(row.netIncome ?? 0),
+        roe: Number(row.roe ?? 0),
+      })),
+      disclosures: anns.map((d) => ({
+        id: d.id,
+        title: d.title,
+        date: String(d.day),
+        source: d.source ?? "DB",
+        url: d.url ?? "",
+        summary: d.summary ?? "",
+        category: d.category ?? undefined,
+        epsImpactScore: d.epsImpactScore ?? undefined,
+        sentiment: (d.sentiment as any) ?? undefined,
+      })),
+      news: news.map((n) => ({
+        id: n.id,
+        title: n.title,
+        date: new Date(n.publishedAt).toISOString().slice(0, 10),
+        source: n.source ?? "DB",
+        url: n.url ?? "",
+        summary: n.summary ?? "",
+        sentimentScore: n.sentimentScore ? Number(n.sentimentScore) : undefined,
+        topicTags: Array.isArray(n.topicTags) ? (n.topicTags as any) : undefined,
+      })),
+    }
+  } catch {
+    // 로컬/도커 DB 미구성 시에도 기존 목업이 동작하도록 조용히 실패 처리
+    return null
+  }
 }
 
