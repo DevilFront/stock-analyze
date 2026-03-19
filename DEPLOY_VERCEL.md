@@ -51,15 +51,33 @@ git push -u origin main
    - "Deploy" 클릭
 
 3. **환경 변수 설정 (필수)**  
-   OpenAI API를 쓰므로 배포 전에 설정해야 합니다.
+   현재는 리포트 생성 + DB 저장 + 공시/뉴스 온디맨드 수집이 동작하므로
+   아래 값들을 함께 설정해야 합니다.
 
    - 프로젝트 설정 → **Settings** → **Environment Variables**
-   - 추가:
-     - **Name:** `OPENAI_API_KEY`
-     - **Value:** `.env.local`에 있는 API 키 값
-     - Environment: Production, Preview, Development 모두 체크 권장
+   - 필수:
+     - `OPENAI_API_KEY`
+     - `DATABASE_URL`
+     - `DART_API_KEY`
+     - `NEXTAUTH_SECRET`
+     - `NEXTAUTH_URL` (예: `https://your-app.vercel.app`)
+   - 권장:
+     - `REPORT_DEMO_MODE`
+     - `REPORT_DEMO_MEASURE_USAGE`
+     - `AI_BUDGET_KRW_MONTHLY`
+     - `AI_COST_INPUT_KRW_PER_1M`
+     - `AI_COST_OUTPUT_KRW_PER_1M`
+     - `AI_TOKEN_BUDGET_MONTHLY`
 
    저장 후 **Redeploy** 한 번 해주면 적용됩니다.
+
+   상세 체크리스트는 `docs/VERCEL_ENV_CHECKLIST.md` 참고.
+
+4. **DB 마이그레이션 적용**
+
+```bash
+npm run db:migrate
+```
 
 ---
 

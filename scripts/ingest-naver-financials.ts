@@ -69,7 +69,7 @@ function pickFinancialTable($: ReturnType<typeof load>) {
 }
 
 function parseTable($: ReturnType<typeof load>, table: ReturnType<typeof load> extends any ? any : any) {
-  const headerRows = table.find("thead tr").toArray().map((tr: any) =>
+  const headerRows: string[][] = table.find("thead tr").toArray().map((tr: any) =>
     $(tr)
       .find("th")
       .toArray()
@@ -83,7 +83,9 @@ function parseTable($: ReturnType<typeof load>, table: ReturnType<typeof load> e
     headerRows
       .slice()
       .reverse()
-      .find((cols) => cols.some((c) => /\d{4}[./]\d{2}/.test(c))) ?? headerRows[headerRows.length - 1] ?? []
+      .find((cols: string[]) => cols.some((c: string) => /\d{4}[./]\d{2}/.test(c))) ??
+    headerRows[headerRows.length - 1] ??
+    []
 
   // 네이버 표는 기간 라벨 행에 "주요재무정보" 헤더가 포함되지 않는 구조(행 병합)라
   // slice(1)로 자르면 인덱스 정렬이 깨진다. periodRow 전체를 그대로 사용한다.
