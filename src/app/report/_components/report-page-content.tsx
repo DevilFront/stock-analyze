@@ -7,6 +7,7 @@ import { ReportAiPanel } from "./report-ai-panel"
 import { SankeyFlowChart } from "./sankey-flow-chart"
 import { RadarCapabilityChart } from "./radar-capability-chart"
 import { WaterfallProfitChart } from "./waterfall-profit-chart"
+import { MomentumTimeline } from "./momentum-timeline"
 import {
   getFinancialFlow,
   getCapabilityScores,
@@ -85,8 +86,17 @@ export function ReportPageContent({ symbol, data }: Props) {
           symbol={symbol}
           companyData={data}
           onReportGenerated={onReportGenerated}
+          showTimelineBeforeGenerate={false}
         />
       </section>
+
+      {reportGenerated && (data.disclosures.length > 0 || data.news.length > 0) && (
+        <section className="border-t border-slate-800/80 pt-6">
+          <Card className="border-slate-800 bg-slate-900/50 p-4">
+            <MomentumTimeline disclosures={data.disclosures} news={data.news} />
+          </Card>
+        </section>
+      )}
 
       {/* 하단 패널: 리포트 생성 전에는 블러 + 안내 메시지 */}
       <section className="relative border-t border-slate-800/80 pt-6">
@@ -104,46 +114,76 @@ export function ReportPageContent({ symbol, data }: Props) {
               <div className="mb-3 border-b border-slate-700/80 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
                 최근 공시
               </div>
-              <div className="space-y-4">
-                {data.disclosures.map((d) => (
-                  <div key={d.id} className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[13px] font-medium text-slate-50">
-                        {d.title}
+              {data.disclosures.length === 0 ? (
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  아직 공시 데이터가 없습니다. (DART 적재 후 표시됩니다)
+                </p>
+              ) : (
+                <div className="max-h-[360px] space-y-4 overflow-y-auto pr-1">
+                  {data.disclosures.slice(0, 12).map((d) => (
+                    <div key={d.id} className="space-y-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 text-[13px] font-medium text-slate-50">
+                          <div className="truncate">{d.title}</div>
+                          {d.category && (
+                            <div className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500">
+                              {d.category}
+                            </div>
+                          )}
+                        </div>
+                        <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-500">
+                          {d.date}
+                        </span>
                       </div>
-                      <span className="whitespace-nowrap text-[11px] text-slate-500">
-                        {d.date}
-                      </span>
+                      {d.summary ? (
+                        <p className="leading-relaxed text-[11px] text-slate-400">
+                          {d.summary}
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">
+                          요약은 아직 없습니다. (다음 단계에서 자동 요약/분류 가능)
+                        </p>
+                      )}
                     </div>
-                    <p className="leading-relaxed text-[11px] text-slate-400">
-                      {d.summary}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
 
             <Card className="border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-200">
               <div className="mb-3 border-b border-slate-700/80 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
                 주요 뉴스
               </div>
-              <div className="space-y-4">
-                {data.news.map((n) => (
-                  <div key={n.id} className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[13px] font-medium text-slate-50">
-                        {n.title}
+              {data.news.length === 0 ? (
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  아직 뉴스 데이터가 없습니다. (RSS/뉴스 API 적재 후 표시됩니다)
+                </p>
+              ) : (
+                <div className="max-h-[360px] space-y-4 overflow-y-auto pr-1">
+                  {data.news.slice(0, 10).map((n) => (
+                    <div key={n.id} className="space-y-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 text-[13px] font-medium text-slate-50">
+                          <div className="truncate">{n.title}</div>
+                          {n.topicTags?.length ? (
+                            <div className="mt-0.5 text-[10px] uppercase tracking-wider text-slate-500">
+                              {n.topicTags.slice(0, 3).join(" · ")}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span className="shrink-0 whitespace-nowrap text-[11px] text-slate-500">
+                          {n.date}
+                        </span>
                       </div>
-                      <span className="whitespace-nowrap text-[11px] text-slate-500">
-                        {n.date}
-                      </span>
+                      {n.summary ? (
+                        <p className="leading-relaxed text-[11px] text-slate-400">
+                          {n.summary}
+                        </p>
+                      ) : null}
                     </div>
-                    <p className="leading-relaxed text-[11px] text-slate-400">
-                      {n.summary}
-                    </p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </Card>
           </div>
 

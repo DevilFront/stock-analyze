@@ -165,7 +165,7 @@ async function getCompanyRawFromDb(symbol: string): Promise<CompanyRawResponse |
       .select()
       .from(announcements)
       .where(eq(announcements.symbol, symbol))
-      .orderBy(desc(announcements.createdAt))
+      .orderBy(desc(announcements.day), desc(announcements.createdAt))
       .limit(20)
 
     const news = await db

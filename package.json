@@ -15,6 +15,12 @@
     "ingest:005930": "tsx ./scripts/ingest-yahoo.ts --symbol 005930 --yahoo 005930.KS --name 삼성전자 --sector 반도체",
     "ingest:financials:005930": "tsx ./scripts/ingest-naver-financials.ts --symbol 005930 --name 삼성전자 --sector 반도체",
     "ingest:dart:005930": "tsx ./scripts/ingest-dart-announcements.ts --symbol 005930 --days 90"
+    ,
+    "enrich:dart:005930": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements.ts --symbol 005930 --limit 40"
+    ,
+    "enrich:dart:fulltext:005930": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements-fulltext.ts --symbol 005930 --limit 20 --importantOnly 1"
+    ,
+    "ai:budget": "set -a && source .env.local && set +a && tsx ./scripts/ai-budget-status.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

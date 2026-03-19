@@ -234,6 +234,41 @@ export const creditTopups = pgTable(
 )
 
 // -----------------------------------------------------------------------------
+// AI usage & budget (monthly cap)
+// -----------------------------------------------------------------------------
+
+export const aiUsageEvents = pgTable(
+  "ai_usage_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    month: text("month").notNull(), // YYYY-MM
+    feature: text("feature").notNull(), // e.g. "dart_enrich_fulltext"
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").default(0).notNull(),
+    outputTokens: integer("output_tokens").default(0).notNull(),
+    costKrw: integer("cost_krw").default(0).notNull(),
+    meta: jsonb("meta").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    monthIdx: index("ai_usage_events_month_idx").on(t.month),
+    featureIdx: index("ai_usage_events_feature_idx").on(t.feature),
+  }),
+)
+
+export const aiUsageMonthly = pgTable(
+  "ai_usage_monthly",
+  {
+    month: text("month").primaryKey(), // YYYY-MM
+    limitKrw: integer("limit_krw").default(30000).notNull(),
+    spentKrw: integer("spent_krw").default(0).notNull(),
+    inputTokens: integer("input_tokens").default(0).notNull(),
+    outputTokens: integer("output_tokens").default(0).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+)
+
+// -----------------------------------------------------------------------------
 // Stock data (DB_REPORT_STRATEGY 기반 확장형 스키마; 상세 수집은 추후 ETL로 채움)
 // -----------------------------------------------------------------------------
 

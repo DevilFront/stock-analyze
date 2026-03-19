@@ -13,6 +13,7 @@ import {
 } from "@/db/schema"
 import { and, desc, eq } from "drizzle-orm"
 import crypto from "crypto"
+import { recordUsage } from "@/../scripts/_lib/ai-budget"
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   const demoMode = process.env.REPORT_DEMO_MODE === "1"
+  const demoMeasureUsage = process.env.REPORT_DEMO_MEASURE_USAGE !== "0"
 
   // 데모 모드에서는 로그인/과금 로직을 우회하고 리포트 품질만 확인한다.
   const session = demoMode ? null : await auth()
@@ -366,24 +368,54 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
 Markdown으로 위 구조에 맞는 리포트를 작성하라.
 `
 
-  const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    stream: true,
-    messages: [
-      {
-        role: "system",
-        content:
-          "너는 한국 상장기업을 분석하는 수석 애널리스트다. 투자 권유는 금지되며, 정량·정성 데이터를 결합한 논리적 인과관계 설명과 리스크 정리가 핵심이다.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-  })
+  const model = "gpt-4o-mini"
+  const messages = [
+    {
+      role: "system" as const,
+      content:
+        "너는 한국 상장기업을 분석하는 수석 애널리스트다. 투자 권유는 금지되며, 정량·정성 데이터를 결합한 논리적 인과관계 설명과 리스크 정리가 핵심이다.",
+    },
+    { role: "user" as const, content: prompt },
+  ]
 
   const encoder = new TextEncoder()
   let fullText = ""
+
+  // 데모 모드에서는 "비용/토큰"을 정확히 측정하기 위해 비스트리밍 호출로 usage를 확보한 뒤
+  // 응답을 ReadableStream으로 흘려보낸다.
+  if (demoMode && demoMeasureUsage) {
+    const res = await client.chat.completions.create({
+      model,
+      stream: false,
+      messages,
+    })
+    fullText = res.choices[0]?.message?.content ?? ""
+    const usage = (res as any).usage
+    if (usage) {
+      await recordUsage(
+        { feature: "report_generate", model, meta: { symbol, demoMode: true } },
+        {
+          inputTokens: Number(usage.prompt_tokens ?? 0),
+          outputTokens: Number(usage.completion_tokens ?? 0),
+        },
+      )
+    }
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(fullText))
+        controller.close()
+      },
+    })
+    return new Response(stream, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    })
+  }
+
+  const response = await client.chat.completions.create({
+    model,
+    stream: true,
+    messages,
+  })
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -396,7 +428,6 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
           }
         }
 
-        // 생성 완료 후 저장 (스트리밍 UX 유지)
         if (!demoMode) {
           await db.insert(reports).values({
             userId: userId!,
@@ -404,7 +435,7 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
             costCredits,
             wasFree,
             promptVersion: "v1",
-            model: "gpt-4o-mini",
+            model,
             markdown: fullText,
             meta: { ip: ip || null },
           })

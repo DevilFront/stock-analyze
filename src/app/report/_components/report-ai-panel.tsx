@@ -23,6 +23,7 @@ type Props = {
   symbol: string
   companyData?: CompanyRawResponse | null
   onReportGenerated?: () => void
+  showTimelineBeforeGenerate?: boolean
 }
 
 const SECTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -57,11 +58,17 @@ function flattenMarkdownChildren(children: React.ReactNode): string {
   return ""
 }
 
-export function ReportAiPanel({ symbol, companyData, onReportGenerated }: Props) {
+export function ReportAiPanel({
+  symbol,
+  companyData,
+  onReportGenerated,
+  showTimelineBeforeGenerate = false,
+}: Props) {
   const [text, setText] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const hasReportedGenerated = useRef(false)
+  const normalizedText = normalizeReportMarkdown(text)
 
   useEffect(() => {
     if (!loading && text.length > 0 && onReportGenerated && !hasReportedGenerated.current) {
@@ -171,7 +178,7 @@ export function ReportAiPanel({ symbol, companyData, onReportGenerated }: Props)
                 <span className="text-[11px] text-slate-500">/ 100</span>
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                <div className="h-1.5 w-2/5 rounded-full bg-gradient-to-r from-emerald-400 via-sky-400 to-amber-300" />
+                <div className="h-1.5 w-2/5 rounded-full bg-linear-to-r from-emerald-400 via-sky-400 to-amber-300" />
               </div>
               <p className="mt-2 leading-relaxed text-[11px] text-slate-500">
                 추후 가격·수급 데이터 연동 시 공시/뉴스 반응 기반 점수를 표시합니다.
@@ -331,7 +338,7 @@ export function ReportAiPanel({ symbol, companyData, onReportGenerated }: Props)
                     ),
                   }}
                 >
-                  {text}
+                  {normalizedText}
                 </ReactMarkdown>
               </div>
             ) : (
@@ -340,7 +347,9 @@ export function ReportAiPanel({ symbol, companyData, onReportGenerated }: Props)
                   상단의 &quot;리포트 생성&quot; 버튼을 누르면, 공시·실적·뉴스를 교차 분석한
                   기관 리포트 스타일의 Markdown 분석이 이 영역에 표시됩니다.
                 </p>
-                {companyData && (companyData.disclosures.length > 0 || companyData.news.length > 0) && (
+                {showTimelineBeforeGenerate &&
+                  companyData &&
+                  (companyData.disclosures.length > 0 || companyData.news.length > 0) && (
                   <Card className="border-slate-800 bg-slate-900/50 p-4">
                     <MomentumTimeline
                       disclosures={companyData.disclosures}
@@ -352,16 +361,30 @@ export function ReportAiPanel({ symbol, companyData, onReportGenerated }: Props)
             )}
           </div>
 
-          {companyData && text && (companyData.disclosures.length > 0 || companyData.news.length > 0) && (
-            <Card className="border-slate-800 bg-slate-900/50 p-4">
-              <MomentumTimeline
-                disclosures={companyData.disclosures}
-                news={companyData.news}
-              />
-            </Card>
-          )}
+          {/* 타임라인 위치는 상위 컨테이너에서 제어 (ReportPageContent) */}
         </main>
       </div>
     </div>
   )
+}
+
+function normalizeReportMarkdown(input: string): string {
+  // 모델이 종종 헤딩을 마크다운(#)이 아닌 "1. Executive Summary" 같은 일반 텍스트로 출력함.
+  // 렌더링 스타일이 깨지지 않도록 흔한 패턴을 헤딩으로 정규화한다.
+  const lines = String(input ?? "").split("\n")
+  const out: string[] = []
+  for (const line of lines) {
+    const m = line.match(/^\s*(\d+)\.\s+(.+?)\s*$/)
+    if (m) {
+      out.push(`## ${m[2]}`)
+      continue
+    }
+    const m2 = line.match(/^\s*[-*]{0,2}\s*Key Takeaways\s*$/i)
+    if (m2) {
+      out.push(`### Key Takeaways`)
+      continue
+    }
+    out.push(line)
+  }
+  return out.join("\n")
 }

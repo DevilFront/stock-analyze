@@ -52,9 +52,12 @@ async function resolveCorpCode(crtfcKey: string, stockCode: string): Promise<str
   const list = parsed?.result?.list
   if (!list) throw new Error("unexpected corpCode xml shape")
   const arr = Array.isArray(list) ? list : [list]
-  const found = arr.find((x: any) => String(x.stock_code ?? "").trim() === stockCode)
+  const normalized = String(stockCode).trim().replace(/^0+/, "")
+  const found = arr.find((x: any) => String(x.stock_code ?? "").trim() === normalized)
   if (!found?.corp_code) throw new Error(`corp_code not found for stock_code=${stockCode}`)
-  return String(found.corp_code).trim()
+  const corp = String(found.corp_code).trim()
+  // DART API는 corp_code가 8자리(leading zero 포함)인 값을 기대함
+  return corp.padStart(8, "0")
 }
 
 function yyyymmdd(d: Date): string {
