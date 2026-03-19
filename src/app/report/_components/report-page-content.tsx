@@ -74,6 +74,7 @@ type Props = {
 
 export function ReportPageContent({ symbol, data }: Props) {
   const [reportGenerated, setReportGenerated] = useState(false)
+  const hasRealNews = data.news.length > 0
 
   const onReportGenerated = useCallback(() => {
     setReportGenerated(true)
@@ -150,15 +151,11 @@ export function ReportPageContent({ symbol, data }: Props) {
               )}
             </Card>
 
-            <Card className="border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-200">
-              <div className="mb-3 border-b border-slate-700/80 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
-                주요 뉴스
-              </div>
-              {data.news.length === 0 ? (
-                <p className="text-[11px] leading-relaxed text-slate-500">
-                  아직 뉴스 데이터가 없습니다. (RSS/뉴스 API 적재 후 표시됩니다)
-                </p>
-              ) : (
+            {hasRealNews && (
+              <Card className="border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-200">
+                <div className="mb-3 border-b border-slate-700/80 pb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-slate-500">
+                  주요 뉴스
+                </div>
                 <div className="max-h-[360px] space-y-4 overflow-y-auto pr-1">
                   {data.news.slice(0, 10).map((n) => (
                     <div key={n.id} className="space-y-1">
@@ -183,8 +180,8 @@ export function ReportPageContent({ symbol, data }: Props) {
                     </div>
                   ))}
                 </div>
-              )}
-            </Card>
+              </Card>
+            )}
           </div>
 
           {/* 전문 시각화: Sankey / Radar / Waterfall */}

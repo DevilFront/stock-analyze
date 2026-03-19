@@ -60,6 +60,21 @@ DB를 활용하면 조금 더 고품질·고도화된 정보 제공이 가능하
 | **daily_stats** | 일일 주가, **수급 주체별 매수량**, 기술적 지표 저장 |
 | **sector_averages** | **섹터별 주요 재무 비율 평균** (매일 업데이트) |
 | **announcements** | **공시 내용**과 해당 공시 발생 시점의 **주가 변화 데이터** |
+| **quant_scores** | 가치/퀄리티/모멘텀/리스크/수급/심리를 결합한 **일별 퀀트 등급** |
+| **signal_events** | 골든크로스 등 **신호 발생 시점 + 미래수익률 라벨** 저장 |
+| **signal_backtest_stats** | 신호별 승률/평균수익률/샤프/낙폭 등 **백테스트 요약 통계** |
+| **community_sentiment_daily** | 커뮤니티 언급량/긍부정/버즈 급증치 **일별 집계** |
+| **crosscheck_daily** | 공시 + 가격 + 커뮤니티를 합친 **교차검증 점수** 저장 |
+| **issue_price_moves** | 공시/뉴스 이후 N일 내 **±5% 급등락 이벤트 라벨** 저장 |
+
+### 운영 튜닝 포인트 (UI 점수)
+
+- 리포트 좌측 `AI 수급 점수`는 `issue_price_moves` 기반으로 계산
+- 가중치 설정 파일: `src/app/report/_lib/issue-score.ts`
+  - `baseline`: 중립 점수
+  - `balanceMultiplier`: 급등/급락 비중 차이 반영 강도
+  - `confidenceMultiplier`: 표본 수에 따른 신뢰도 가점
+  - `confidenceSampleCap`: 신뢰도 가점이 포화되는 표본 수
 
 ### 테이블 정의 (DDL)
 
@@ -69,6 +84,12 @@ DB를 활용하면 조금 더 고품질·고도화된 정보 제공이 가능하
 - **daily_stats**: `symbol`, `date`, 주가(open/high/low/close), 거래량, 수급(외인/기관/개인), 기술지표(JSONB) 등
 - **sector_averages**: `sector`, `date`, 수익성/성장성/안정성/배당/밸류에이션 등 평균값
 - **announcements**: `id`, `symbol`, `title`, `date`, `category`, `summary`, 주가반응(JSONB: 공시일 대비 5일 수익률 등)
+- **quant_scores**: `total_score`, `sector_percentile`, `grade`, `score_value~score_sentiment` 등
+- **signal_events**: `signal_type`, `signal_day`, `return_1d/5d/10d/20d`, `hit_5d` 등
+- **signal_backtest_stats**: `sample_size`, `win_rate_5d`, `avg_return_5d`, `max_drawdown` 등
+- **community_sentiment_daily**: `mention_count`, `positive_count`, `buzz_zscore`, `sentiment_score` 등
+- **crosscheck_daily**: `underreaction_score`, `divergence_score`, `conviction_score`, `flags` 등
+- **issue_price_moves**: `event_source`, `event_id`, `max_up_pct`, `max_down_pct`, `move_type` 등
 
 ### 활용 예시
 
@@ -130,6 +151,20 @@ JOIN sector_avg sa ON sa.sector = cs.sector;
 | 3 | **공시–주가 Event Study** | announcements, daily_stats | 공시 이력 + 당일/5일 수익률 매핑 후 Combi Chart |
 
 실제 DDL은 `docs/SCHEMA.sql` 에서 확인 후 DB에 적용하면 된다.
+
+---
+
+## 진행 상태 (2026-03-19)
+
+| 항목 | 상태 | 비고 |
+|------|------|------|
+| 섹터 상대 비교 (기본) | ✅ | `companies`, `daily_stats`, `sector_averages` |
+| 공시 이벤트 스터디 (기본) | ✅ | `announcements.price_impact` |
+| 수급 누적 (기본) | ✅ | `daily_stats.net_*` |
+| 퀀트 스코어링 | ✅ 스키마 반영 | `quant_scores` 추가 |
+| 백테스트 통계 | ✅ 스키마 반영 | `signal_events`, `signal_backtest_stats` 추가 |
+| 멀티소스 교차검증 | ✅ 스키마 반영 | `community_sentiment_daily`, `crosscheck_daily` 추가 |
+| ETL/스케줄러 구현 | ⏳ 다음 단계 | 수집기와 집계 job 필요 |
 
 ---
 

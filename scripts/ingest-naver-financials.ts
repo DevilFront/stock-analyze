@@ -109,6 +109,7 @@ async function main() {
 
   const html = await fetchHtml(symbol)
   const $ = load(html)
+  const marketCap = parseKoreanMarketCapToWon($("#_market_sum").first().text())
 
   const table = pickFinancialTable($)
   if (!table) throw new Error("Failed to find financial table on Naver page")
@@ -131,12 +132,18 @@ async function main() {
       symbol,
       name: name ?? symbol,
       sector: sector ?? "Unknown",
+      marketCap: marketCap ?? undefined,
       currency: "KRW",
       profile: { source: "naver-finance" },
     })
     .onConflictDoUpdate({
       target: companies.symbol,
-      set: { name: name ?? symbol, sector: sector ?? "Unknown", updatedAt: new Date() },
+      set: {
+        name: name ?? symbol,
+        sector: sector ?? "Unknown",
+        marketCap: marketCap ?? undefined,
+        updatedAt: new Date(),
+      },
     })
 
   // 네이버 표는 보통 [연간 4개] + [분기 5개] (총 9개) 형태
@@ -228,4 +235,17 @@ main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
+
+function parseKoreanMarketCapToWon(raw: string): number | null {
+  const txt = String(raw ?? "").replace(/\s+/g, " ").trim()
+  if (!txt) return null
+  const joMatch = txt.match(/([\d,]+)\s*조/)
+  const afterJo = txt.replace(/.*조/, "").trim()
+  const eokMatch = afterJo.match(/([\d,]+)/)
+  const jo = joMatch ? Number(joMatch[1].replace(/,/g, "")) : 0
+  const eok = eokMatch ? Number(eokMatch[1].replace(/,/g, "")) : 0
+  if (!Number.isFinite(jo) || !Number.isFinite(eok)) return null
+  const won = jo * 1_0000_0000_0000 + eok * 1_0000_0000
+  return won > 0 ? won : null
+}
 

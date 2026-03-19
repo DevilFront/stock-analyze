@@ -8,6 +8,7 @@ import {
   dailyStats,
   deviceFreeClaims,
   ipDailyFreeClaims,
+  issuePriceMoves,
   reports,
   userCredits,
 } from "@/db/schema"
@@ -177,7 +178,8 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const company = await getCompanyRaw(symbol)
+  // 비용이 발생하는 실시간 수집은 "리포트 생성" 버튼 클릭 시점(API 호출)에서만 수행.
+  const company = await getCompanyRaw(symbol, { allowOnDemandIngest: true })
 
   // DB에 시세가 있으면(도커/네온) 최근 가격/지표 요약을 프롬프트에 포함
   let priceSnippet = ""
@@ -249,6 +251,100 @@ export async function POST(req: NextRequest) {
     }),
   ].join("\n")
 
+  const quality = company.dataQuality
+  const qualitySnippet = quality
+    ? `
+[데이터 최신성/비교 메타]
+- 데이터 소스: ${quality.source}
+- 이번 요청에서 실시간 수집 수행 여부: ${quality.ingestionTriggered ? "예" : "아니오"}
+${quality.compare
+  ? `- 수집 전/후 변화: 분기 ${quality.compare.before.quarterly}→${quality.compare.after.quarterly} (추가 ${quality.compare.added.quarterly}), 연간 ${quality.compare.before.yearly}→${quality.compare.after.yearly} (추가 ${quality.compare.added.yearly}), 공시 ${quality.compare.before.disclosures}→${quality.compare.after.disclosures} (추가 ${quality.compare.added.disclosures}), 이슈라벨 ${quality.compare.before.issueMoves}→${quality.compare.after.issueMoves} (추가 ${quality.compare.added.issueMoves})`
+  : "- 수집 전/후 비교 데이터 없음"}
+`
+    : ""
+
+  let issueMoveSnippet = ""
+  let issueStatsMarkdown = ""
+  try {
+    const moves = await db
+      .select()
+      .from(issuePriceMoves)
+      .where(eq(issuePriceMoves.symbol, symbol))
+      .orderBy(desc(issuePriceMoves.eventDay), desc(issuePriceMoves.updatedAt))
+      .limit(20)
+
+    if (moves.length > 0) {
+      const surge = moves.filter((m) => m.moveType === "SURGE" || m.moveType === "BOTH")
+      const drop = moves.filter((m) => m.moveType === "DROP" || m.moveType === "BOTH")
+      const total = moves.length
+      const surgeRate = total > 0 ? (surge.length / total) * 100 : 0
+      const dropRate = total > 0 ? (drop.length / total) * 100 : 0
+      const top = moves.slice(0, 5)
+      const recentSurge = surge[0]
+      const recentDrop = drop[0]
+      const surgeEvent = recentSurge
+        ? `${String(recentSurge.eventDay)} ${recentSurge.eventTitle}`
+        : "-"
+      const dropEvent = recentDrop
+        ? `${String(recentDrop.eventDay)} ${recentDrop.eventTitle}`
+        : "-"
+      const sampleWindow = Number(moves[0]?.lookaheadDays ?? 5)
+
+      issueMoveSnippet = `
+[이슈별 급등락 라벨 (DB: 공시/뉴스 이후 ${Number(moves[0]?.lookaheadDays ?? 5)}거래일)]
+- 전체 라벨 이벤트 수: ${total}건
+- 급등(>= +5%) 이벤트 수: ${surge.length}건 (${surgeRate.toFixed(1)}%)
+- 급락(<= -5%) 이벤트 수: ${drop.length}건 (${dropRate.toFixed(1)}%)
+${top
+  .map((m) => {
+    const src = m.eventSource === "DART" ? "공시" : "뉴스"
+    const pct =
+      m.movePct == null
+        ? "n/a"
+        : `${Number(m.movePct) > 0 ? "+" : ""}${Number(m.movePct).toFixed(2)}%`
+    return `- (${String(m.eventDay)}) [${src}] ${m.eventTitle} → ${m.moveType} (${pct})`
+  })
+  .join("\n")}
+`
+
+      issueStatsMarkdown = `
+## 이슈 반응 통계 카드
+
+| 구분 | 건수 | 비중(%) | 대표 이벤트 |
+|---|---:|---:|---|
+| 전체 | ${total} | 100.0 | 최근 ${Math.min(total, 5)}건 기준 집계 |
+| 급등 (>= +5%) | ${surge.length} | ${surgeRate.toFixed(1)} | ${surgeEvent} |
+| 급락 (<= -5%) | ${drop.length} | ${dropRate.toFixed(1)} | ${dropEvent} |
+
+- 분석 기준: 이슈 발생 후 ${sampleWindow}거래일 내 최대/최소 수익률
+- 해석 한 줄: 최근 이슈 반응은 ${
+        surge.length > drop.length
+          ? "상방 반응(급등) 빈도가 더 높습니다."
+          : surge.length < drop.length
+            ? "하방 반응(급락) 빈도가 더 높습니다."
+            : "상하방 반응 빈도가 유사합니다."
+      }
+`
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!issueStatsMarkdown) {
+    issueStatsMarkdown = `
+## 이슈 반응 통계 카드
+
+| 구분 | 건수 | 비중(%) | 대표 이벤트 |
+|---|---:|---:|---|
+| 전체 | 0 | 0.0 | - |
+| 급등 (>= +5%) | 0 | 0.0 | - |
+| 급락 (<= -5%) | 0 | 0.0 | - |
+
+- 분석 기준: 이슈 발생 후 5거래일 내 최대/최소 수익률
+- 해석 한 줄: 이슈 반응 라벨 데이터가 아직 충분하지 않아 패턴 해석이 제한됩니다.
+`
+  }
+
   const prompt = `
 너는 '골드만삭스' 혹은 '미래에셋' 출신의 수석 애널리스트다.
 단순 정보 나열이 아니라, 정량·정성 데이터를 결합해 기업의 미래 가치와 리스크를 논리적으로 추론하는 리포트를 작성해야 한다.
@@ -263,6 +359,7 @@ export async function POST(req: NextRequest) {
   )}조원 (${company.profile.currency})
 - 최근 분기 핵심 재무: ${latestFinancialSummary}
 ${priceSnippet}
+${issueMoveSnippet}
 
 [최근 분기/연간 재무 데이터(요약)]
 ${company.quarterly
@@ -294,6 +391,7 @@ ${company.yearly
 
 [최신 공시/뉴스 데이터]
 ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
+${qualitySnippet}
 
 [분석 원칙]
 1. 정량적 데이터(수익성, 마진, ROE 등 재무지표)와 정성적 데이터(뉴스, 공시)를 반드시 **교차 분석(Cross-Analysis)** 하라.
@@ -302,6 +400,9 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
 3. 유료 사용자가 궁금해하는 핵심 질문은 **"그래서 이 공시/뉴스가 내일~향후 3~6개월 주가에 어떤 방향성 신호를 주는가?"** 이다. 이 질문에 답하는 문장을 각 섹션에 녹여라.
 4. 투자자가 실제 의사결정을 내릴 수 있도록, 리포트 상단에 '핵심 요약(Key Takeaways)'을 반드시 포함하라.
 5. 모든 리포트는 Markdown 형식으로 작성하고, 섹션/리스트/강조(굵게)를 적극 활용해 시각적으로 전문성 있게 구성하라.
+6. 이슈별 급등/급락 라벨이 제공된 경우, 반드시 "이슈 반응 통계 카드" 섹션을 별도로 만들고(표 1개 포함), 모멘텀 분석에서도 해당 이벤트를 인용해 패턴을 요약하라.
+7. 시스템이 리포트 상단에 이미 "이슈 반응 통계 카드" 섹션을 삽입하므로, 같은 제목의 섹션을 중복 생성하지 마라. 대신 이후 섹션(모멘텀 분석 등)에서 해당 통계를 해석해라.
+8. 데이터 최신성/비교 메타가 제공되면, Executive Summary 또는 모멘텀 섹션에서 "이번 요청에서 새로 유입된 데이터가 해석에 어떤 영향을 줬는지"를 1~2문장으로 명시하라.
 
 [공시/뉴스 심각도 및 EPS 영향 평가]
 - 각 주요 공시/뉴스에 대해 다음을 포함하라:
@@ -324,12 +425,20 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
    - 마지막에 **Key Takeaways** 하위 섹션을 만들고, 유료 사용자가 바로 이해할 수 있는 3~5개의 핵심 포인트를 정리하되,
      - "그래서 단기/중기 주가 방향에 어떤 신호인가?"라는 관점에서 문장을 작성하라.
 
-2. 사업 현황 분석 (재무 관점)
+2. 이슈 반응 통계 카드 (필수)
+   - 제공된 [이슈별 급등락 라벨] 데이터를 사용해 아래 항목을 요약하라.
+   - 최소 1개의 Markdown 표를 포함하라.
+   - 표에는 최소 다음 컬럼을 포함:
+     - 구분(전체/급등/급락), 건수, 비중(%), 대표 이벤트
+   - 대표 이벤트는 최근 데이터 기준으로 1~2개를 짧게 표시하라.
+   - 섹션 마지막에 "해석 한 줄"을 반드시 추가하라. (예: 어떤 유형 이슈에서 변동성이 큰지)
+
+3. 사업 현황 분석 (재무 관점)
    - 최근 분기 및 연간 실적을 바탕으로, 매출 성장성·영업이익률·순이익률 추이를 숫자로 설명하라.
    - 업황(예: 메모리 사이클, 소비 경기, 규제 등)을 고려했을 때 현재 수익성이 "정상 수준/과도하게 높음/압박받는 중" 중 어디에 가까운지 논리적으로 판단하라.
    - ROE, 이익 체력, 투자 여력을 함께 언급해, 자본 효율성과 재투자 여지를 평가하라.
 
-3. 모멘텀 분석 (공시/뉴스 인과관계)
+4. 모멘텀 분석 (공시/뉴스 인과관계)
    - 최신 공시/뉴스를 하나씩 훑으며, 각각이 향후 주가와 실적에 줄 수 있는 긍정적/부정적 영향을 상세히 설명하라.
    - 단기 이벤트(예: 일회성 비용, 단기 실적 쇼크)와 중장기 방향성을 바꾸는 이슈(예: 대규모 CAPEX, 신사업, 규제 변화)를 구분해 서술하라.
    - 각 공시/뉴스에 대해:
@@ -338,7 +447,7 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
      - 핵심 논리 1~2문장
    - 알림 시스템에 들어갈 수 있도록, "**[요약 알림 문구]**" 형식의 한 줄 설명을 함께 작성하라.
 
-4. AI 이슈 타임라인 & 연결 분석
+5. AI 이슈 타임라인 & 연결 분석
    - 최근 3~5개의 핵심 공시/뉴스를 시간 순으로 나열하고, 서로 어떤 **이슈 클러스터**를 형성하는지 설명하라.
    - 예를 들어 "HBM CAPEX 확대" 뉴스와 "실적 호조 공시"가 함께 있을 경우,
      - 설비투자→생산능력 확대→향후 매출/마진에 미칠 수 있는 영향까지 하나의 **스토리라인**으로 묶어라.
@@ -346,7 +455,7 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
      "악재성 뉴스가 나오지만 실적은 아직 견조한 구간" 등 **다이버전스(괴리)** 가 있는지 찾고,
      - 있다면 왜 그런지, 시장의 기대치와 어떤 긴장이 있는지 설명하라.
 
-5. 기관/외인 수급과의 상관관계 (데이터 가정)
+6. 기관/외인 수급과의 상관관계 (데이터 가정)
    - 실제 수급 데이터가 제공되지 않은 경우, "현재 수급 데이터는 제공되지 않음"을 명시하되,
      - 공시/뉴스의 성격과 과거 유사 이벤트에서의 전형적인 수급 패턴을 기반으로, **합리적인 시나리오**를 제시하라.
    - 만약 향후에 일별 수급 데이터(기관/외인 순매수)가 제공된다고 가정했을 때,
@@ -354,12 +463,12 @@ ${recentNewsAndDarts || "- 최신 공시/뉴스 데이터 부족"}
    - 예시 형식:
      - "이 유형의 실적/배당 공시는 과거 사례에서 기관의 저점 매수 유입과 동행하는 경우가 많았으며, 이번에도 비슷한 패턴이 나온다면 ○○ 구간이 기관의 관심 가격대로 해석될 수 있다."
 
-6. AI 종합 전망 (보수적/낙관적 시나리오)
+7. AI 종합 전망 (보수적/낙관적 시나리오)
    - 보수적 시나리오와 낙관적 시나리오를 나누어, 각각 어떤 전제(매출 성장, 마진 수준, 업황, 정책 등)에 기반하는지 명시하라.
    - 각 시나리오에서 예상되는 재무 궤적(성장률 방향, 마진 레벨 변화, 배당 여력 등)을 서술하되, 숫자는 범위/레벨 중심으로 설명하라.
    - "어떤 데이터가 추가로 나와야 시나리오가 강화/약화되는지"를 체크포인트 형태로 정리하라.
 
-7. 리스크 체크 (대외 변수 중심)
+8. 리스크 체크 (대외 변수 중심)
    - 금리, 환율, 원자재 가격, 업황 사이클, 경쟁 심화, 규제/정책 등 외부 변수를 중심으로 리스크를 구조화해 설명하라.
    - 각 리스크 요인별로, 회사의 취약도(낮음/보통/높음)를 평가하고 그 근거를 제시하라.
    - 마지막 문단에는 반드시 다음과 유사한 문장을 포함하라:
@@ -380,6 +489,7 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
 
   const encoder = new TextEncoder()
   let fullText = ""
+  const prefixedHeader = `${issueStatsMarkdown.trim()}\n\n`
 
   // 데모 모드에서는 "비용/토큰"을 정확히 측정하기 위해 비스트리밍 호출로 usage를 확보한 뒤
   // 응답을 ReadableStream으로 흘려보낸다.
@@ -389,7 +499,8 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
       stream: false,
       messages,
     })
-    fullText = res.choices[0]?.message?.content ?? ""
+    const modelText = res.choices[0]?.message?.content ?? ""
+    fullText = `${prefixedHeader}${modelText}`
     const usage = (res as any).usage
     if (usage) {
       await recordUsage(
@@ -415,12 +526,23 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
     model,
     stream: true,
     messages,
+    stream_options: { include_usage: true },
   })
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
+        let inputTokens = 0
+        let outputTokens = 0
+        let usageCostKrw = 0
+        controller.enqueue(encoder.encode(prefixedHeader))
+        fullText += prefixedHeader
         for await (const chunk of response) {
+          const usage = (chunk as any)?.usage
+          if (usage) {
+            inputTokens = Number(usage.prompt_tokens ?? inputTokens ?? 0)
+            outputTokens = Number(usage.completion_tokens ?? outputTokens ?? 0)
+          }
           const content = chunk.choices[0]?.delta?.content
           if (content) {
             fullText += content
@@ -429,6 +551,18 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
         }
 
         if (!demoMode) {
+          if (inputTokens > 0 || outputTokens > 0) {
+            const usageResult = await recordUsage(
+              {
+                feature: "report_generate",
+                model,
+                meta: { symbol, userId: userId!, demoMode: false },
+              },
+              { inputTokens, outputTokens },
+            )
+            usageCostKrw = usageResult.costKrw
+          }
+
           await db.insert(reports).values({
             userId: userId!,
             symbol,
@@ -437,7 +571,14 @@ Markdown으로 위 구조에 맞는 리포트를 작성하라.
             promptVersion: "v1",
             model,
             markdown: fullText,
-            meta: { ip: ip || null },
+            meta: {
+              ip: ip || null,
+              usage: {
+                inputTokens,
+                outputTokens,
+                costKrw: usageCostKrw,
+              },
+            },
           })
         }
 

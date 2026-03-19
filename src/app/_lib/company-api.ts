@@ -56,6 +56,49 @@ export type CompanyRawResponse = {
   yearly: YearlyMetric[]
   disclosures: DisclosureItem[]
   news: NewsItem[]
+  issueMoves?: IssueMoveItem[]
+  dataQuality?: DataQualityMeta
+}
+
+export type IssueMoveItem = {
+  id: string
+  eventSource: "DART" | "NEWS" | string
+  eventId: string
+  eventTitle: string
+  eventDay: string
+  thresholdPct: number
+  lookaheadDays: number
+  moveType: "SURGE" | "DROP" | "BOTH" | string
+  moveDay?: string
+  movePct?: number
+  maxUpPct?: number
+  maxDownPct?: number
+}
+
+export type DataQualityMeta = {
+  ingestionTriggered: boolean
+  source: "db" | "on_demand" | "mock" | "fallback"
+  compare?: {
+    before: DataQualitySnapshot
+    after: DataQualitySnapshot
+    added: {
+      quarterly: number
+      yearly: number
+      disclosures: number
+      news: number
+      issueMoves: number
+    }
+  }
+}
+
+export type DataQualitySnapshot = {
+  quarterly: number
+  yearly: number
+  disclosures: number
+  news: number
+  issueMoves: number
+  latestDisclosureDay?: string
+  latestIssueMoveDay?: string
 }
 
 export type CompanyReportRequest = {

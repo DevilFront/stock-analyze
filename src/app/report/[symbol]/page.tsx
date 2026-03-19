@@ -50,7 +50,77 @@ function ReportHeader({ data }: { data: CompanyRawResponse }) {
           <span className="tabular-nums">{reportDate}</span>
         </div>
       </div>
+      {data.dataQuality?.compare && (
+        <div className="mt-4 rounded-lg border border-emerald-800/50 bg-emerald-950/20 p-3 text-xs">
+          <div className="mb-2 font-medium uppercase tracking-wider text-emerald-300">
+            이번 요청 데이터 반영 현황
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCell
+              label="분기 재무"
+              before={data.dataQuality.compare.before.quarterly}
+              after={data.dataQuality.compare.after.quarterly}
+            />
+            <StatCell
+              label="연간 재무"
+              before={data.dataQuality.compare.before.yearly}
+              after={data.dataQuality.compare.after.yearly}
+            />
+            <StatCell
+              label="공시"
+              before={data.dataQuality.compare.before.disclosures}
+              after={data.dataQuality.compare.after.disclosures}
+            />
+            <StatCell
+              label="뉴스"
+              before={data.dataQuality.compare.before.news}
+              after={data.dataQuality.compare.after.news}
+            />
+            <StatCell
+              label="이슈 라벨"
+              before={data.dataQuality.compare.before.issueMoves}
+              after={data.dataQuality.compare.after.issueMoves}
+            />
+          </div>
+          <div className="mt-2 text-[11px] text-emerald-200/80">
+            {data.dataQuality.compare.after.latestDisclosureDay
+              ? `최신 공시일: ${data.dataQuality.compare.after.latestDisclosureDay}`
+              : "최신 공시일 정보 없음"}
+            {" · "}
+            {data.dataQuality.compare.after.latestIssueMoveDay
+              ? `최신 이슈 라벨일: ${data.dataQuality.compare.after.latestIssueMoveDay}`
+              : "최신 이슈 라벨일 정보 없음"}
+          </div>
+        </div>
+      )}
     </header>
+  )
+}
+
+function StatCell({
+  label,
+  before,
+  after,
+}: {
+  label: string
+  before: number
+  after: number
+}) {
+  const diff = after - before
+  const diffText = diff > 0 ? `+${diff}` : `${diff}`
+  const diffClass =
+    diff > 0 ? "text-emerald-300" : diff < 0 ? "text-amber-300" : "text-slate-400"
+
+  return (
+    <div className="rounded-md border border-emerald-900/40 bg-slate-900/40 p-2">
+      <div className="text-[10px] uppercase tracking-wider text-slate-400">{label}</div>
+      <div className="mt-1 flex items-baseline justify-between">
+        <span className="text-sm font-semibold text-slate-100">
+          {before} → {after}
+        </span>
+        <span className={`text-xs font-medium ${diffClass}`}>{diffText}</span>
+      </div>
+    </div>
   )
 }
 

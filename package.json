@@ -13,14 +13,26 @@
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
     "ingest:005930": "tsx ./scripts/ingest-yahoo.ts --symbol 005930 --yahoo 005930.KS --name 삼성전자 --sector 반도체",
+    "ingest:000660": "tsx ./scripts/ingest-yahoo.ts --symbol 000660 --yahoo 000660.KS --name SK하이닉스 --sector 반도체",
     "ingest:financials:005930": "tsx ./scripts/ingest-naver-financials.ts --symbol 005930 --name 삼성전자 --sector 반도체",
+    "ingest:financials:000660": "tsx ./scripts/ingest-naver-financials.ts --symbol 000660 --name SK하이닉스 --sector 반도체",
+    "ingest:news:005930": "tsx ./scripts/ingest-news-rss.ts --symbol 005930 --name 삼성전자 --limit 20 --days 14",
+    "ingest:news:000660": "tsx ./scripts/ingest-news-rss.ts --symbol 000660 --name SK하이닉스 --limit 20 --days 14",
     "ingest:dart:005930": "tsx ./scripts/ingest-dart-announcements.ts --symbol 005930 --days 90"
+    ,
+    "ingest:dart:000660": "tsx ./scripts/ingest-dart-announcements.ts --symbol 000660 --days 90"
     ,
     "enrich:dart:005930": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements.ts --symbol 005930 --limit 40"
     ,
+    "enrich:dart:000660": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements.ts --symbol 000660 --limit 40"
+    ,
     "enrich:dart:fulltext:005930": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements-fulltext.ts --symbol 005930 --limit 20 --importantOnly 1"
     ,
-    "ai:budget": "set -a && source .env.local && set +a && tsx ./scripts/ai-budget-status.ts"
+    "enrich:dart:fulltext:000660": "set -a && source .env.local && set +a && tsx ./scripts/enrich-dart-announcements-fulltext.ts --symbol 000660 --limit 20 --importantOnly 1"
+    ,
+    "ai:budget": "set -a && source .env.local && set +a && tsx ./scripts/ai-budget-status.ts",
+    "detect:moves:005930": "set -a && source .env.local && set +a && tsx ./scripts/detect-issue-price-moves.ts --symbol 005930 --days 365 --thresholdPct 5 --lookaheadDays 5",
+    "detect:moves:000660": "set -a && source .env.local && set +a && tsx ./scripts/detect-issue-price-moves.ts --symbol 000660 --days 365 --thresholdPct 5 --lookaheadDays 5"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

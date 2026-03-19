@@ -421,3 +421,188 @@ export const financialYearly = pgTable(
   }),
 )
 
+export const quantScores = pgTable(
+  "quant_scores",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    symbol: text("symbol")
+      .notNull()
+      .references(() => companies.symbol, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    modelVersion: text("model_version").default("v1").notNull(),
+    totalScore: numeric("total_score", { precision: 8, scale: 3 }).notNull(),
+    sectorPercentile: numeric("sector_percentile", { precision: 6, scale: 2 }),
+    marketPercentile: numeric("market_percentile", { precision: 6, scale: 2 }),
+    grade: text("grade"),
+    scoreValue: numeric("score_value", { precision: 8, scale: 3 }),
+    scoreQuality: numeric("score_quality", { precision: 8, scale: 3 }),
+    scoreGrowth: numeric("score_growth", { precision: 8, scale: 3 }),
+    scoreMomentum: numeric("score_momentum", { precision: 8, scale: 3 }),
+    scoreRisk: numeric("score_risk", { precision: 8, scale: 3 }),
+    scoreSupply: numeric("score_supply", { precision: 8, scale: 3 }),
+    scoreSentiment: numeric("score_sentiment", { precision: 8, scale: 3 }),
+    factors: jsonb("factors").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    symbolDayModelUnique: uniqueIndex("quant_scores_symbol_day_model_unique").on(
+      t.symbol,
+      t.day,
+      t.modelVersion,
+    ),
+    symbolDayIdx: index("quant_scores_symbol_day_idx").on(t.symbol, t.day),
+    totalScoreIdx: index("quant_scores_total_score_idx").on(t.day, t.totalScore),
+  }),
+)
+
+export const signalEvents = pgTable(
+  "signal_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    symbol: text("symbol")
+      .notNull()
+      .references(() => companies.symbol, { onDelete: "cascade" }),
+    signalType: text("signal_type").notNull(),
+    signalDay: date("signal_day").notNull(),
+    signalValue: numeric("signal_value", { precision: 18, scale: 6 }),
+    regime: text("regime"),
+    features: jsonb("features").default({}).notNull(),
+    return1d: numeric("return_1d", { precision: 10, scale: 4 }),
+    return5d: numeric("return_5d", { precision: 10, scale: 4 }),
+    return10d: numeric("return_10d", { precision: 10, scale: 4 }),
+    return20d: numeric("return_20d", { precision: 10, scale: 4 }),
+    maxDrawdown20d: numeric("max_drawdown_20d", { precision: 10, scale: 4 }),
+    hit5d: boolean("hit_5d"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    symbolSignalDayUnique: uniqueIndex("signal_events_symbol_signal_day_unique").on(
+      t.symbol,
+      t.signalType,
+      t.signalDay,
+    ),
+    typeDayIdx: index("signal_events_type_day_idx").on(t.signalType, t.signalDay),
+    symbolDayIdx: index("signal_events_symbol_day_idx").on(t.symbol, t.signalDay),
+  }),
+)
+
+export const signalBacktestStats = pgTable(
+  "signal_backtest_stats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    signalType: text("signal_type").notNull(),
+    asOfDay: date("as_of_day").notNull(),
+    sampleSize: integer("sample_size").default(0).notNull(),
+    winRate5d: numeric("win_rate_5d", { precision: 6, scale: 2 }),
+    winRate10d: numeric("win_rate_10d", { precision: 6, scale: 2 }),
+    avgReturn5d: numeric("avg_return_5d", { precision: 10, scale: 4 }),
+    avgReturn10d: numeric("avg_return_10d", { precision: 10, scale: 4 }),
+    medianReturn5d: numeric("median_return_5d", { precision: 10, scale: 4 }),
+    medianReturn10d: numeric("median_return_10d", { precision: 10, scale: 4 }),
+    sharpe20d: numeric("sharpe_20d", { precision: 10, scale: 4 }),
+    maxDrawdown: numeric("max_drawdown", { precision: 10, scale: 4 }),
+    byRegime: jsonb("by_regime").default({}).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    signalAsOfUnique: uniqueIndex("signal_backtest_stats_signal_as_of_unique").on(
+      t.signalType,
+      t.asOfDay,
+    ),
+    signalAsOfIdx: index("signal_backtest_stats_signal_as_of_idx").on(t.signalType, t.asOfDay),
+  }),
+)
+
+export const communitySentimentDaily = pgTable(
+  "community_sentiment_daily",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    symbol: text("symbol")
+      .notNull()
+      .references(() => companies.symbol, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    source: text("source").notNull(),
+    mentionCount: integer("mention_count").default(0).notNull(),
+    uniqueAuthors: integer("unique_authors").default(0).notNull(),
+    positiveCount: integer("positive_count").default(0).notNull(),
+    negativeCount: integer("negative_count").default(0).notNull(),
+    neutralCount: integer("neutral_count").default(0).notNull(),
+    sentimentScore: numeric("sentiment_score", { precision: 8, scale: 4 }),
+    buzzZscore: numeric("buzz_zscore", { precision: 8, scale: 4 }),
+    spamRatio: numeric("spam_ratio", { precision: 8, scale: 4 }),
+    raw: jsonb("raw").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    symbolDaySourceUnique: uniqueIndex("community_sentiment_symbol_day_source_unique").on(
+      t.symbol,
+      t.day,
+      t.source,
+    ),
+    symbolDayIdx: index("community_sentiment_symbol_day_idx").on(t.symbol, t.day),
+    sourceDayIdx: index("community_sentiment_source_day_idx").on(t.source, t.day),
+  }),
+)
+
+export const crosscheckDaily = pgTable(
+  "crosscheck_daily",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    symbol: text("symbol")
+      .notNull()
+      .references(() => companies.symbol, { onDelete: "cascade" }),
+    day: date("day").notNull(),
+    dartEventCount7d: integer("dart_event_count_7d").default(0).notNull(),
+    dartEventScore7d: numeric("dart_event_score_7d", { precision: 8, scale: 4 }),
+    priceReturn5d: numeric("price_return_5d", { precision: 10, scale: 4 }),
+    volumeZscore: numeric("volume_zscore", { precision: 8, scale: 4 }),
+    communityBuzzZscore: numeric("community_buzz_zscore", { precision: 8, scale: 4 }),
+    communitySentiment: numeric("community_sentiment", { precision: 8, scale: 4 }),
+    divergenceScore: numeric("divergence_score", { precision: 8, scale: 4 }),
+    underreactionScore: numeric("underreaction_score", { precision: 8, scale: 4 }),
+    convictionScore: numeric("conviction_score", { precision: 8, scale: 4 }),
+    flags: jsonb("flags").default([]).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    symbolDayUnique: uniqueIndex("crosscheck_daily_symbol_day_unique").on(t.symbol, t.day),
+    symbolDayIdx: index("crosscheck_daily_symbol_day_idx").on(t.symbol, t.day),
+    underreactionIdx: index("crosscheck_daily_underreaction_idx").on(t.day, t.underreactionScore),
+  }),
+)
+
+export const issuePriceMoves = pgTable(
+  "issue_price_moves",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    symbol: text("symbol")
+      .notNull()
+      .references(() => companies.symbol, { onDelete: "cascade" }),
+    eventSource: text("event_source").notNull(), // DART | NEWS
+    eventId: text("event_id").notNull(), // announcements.id | news_items.id
+    eventDay: date("event_day").notNull(),
+    eventTitle: text("event_title").notNull(),
+    thresholdPct: numeric("threshold_pct", { precision: 8, scale: 4 }).notNull(), // 5.0000
+    lookaheadDays: integer("lookahead_days").default(5).notNull(),
+    baseDay: date("base_day").notNull(), // 실제 비교 기준 거래일
+    baseClose: numeric("base_close", { precision: 18, scale: 4 }).notNull(),
+    maxUpPct: numeric("max_up_pct", { precision: 10, scale: 4 }),
+    maxDownPct: numeric("max_down_pct", { precision: 10, scale: 4 }),
+    moveType: text("move_type").notNull(), // SURGE | DROP | BOTH
+    moveDay: date("move_day"), // threshold 최초 충족일
+    movePct: numeric("move_pct", { precision: 10, scale: 4 }),
+    context: jsonb("context").default({}).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    symbolEventUnique: uniqueIndex("issue_price_moves_symbol_event_unique").on(
+      t.symbol,
+      t.eventSource,
+      t.eventId,
+    ),
+    symbolDayIdx: index("issue_price_moves_symbol_day_idx").on(t.symbol, t.eventDay),
+    moveTypeIdx: index("issue_price_moves_move_type_idx").on(t.moveType, t.eventDay),
+  }),
+)
+

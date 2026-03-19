@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { fetchCompanyReport } from "@/app/_lib/company-api"
 import type { CompanyRawResponse } from "@/app/_lib/company-api"
+import { AnalysisLoading } from "@/app/_components/analysis-loading"
+import { calculateIssueScore } from "../_lib/issue-score"
 import { EpsGauge } from "./eps-gauge"
 import { MomentumTimeline } from "./momentum-timeline"
 import {
@@ -29,6 +31,7 @@ type Props = {
 const SECTION_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "executive summary": FileCheck2,
   "key takeaways": FileCheck2,
+  "이슈 반응 통계": Activity,
   "사업 현황": TrendingUp,
   "재무": BarChart3,
   "모멘텀": Activity,
@@ -116,6 +119,7 @@ export function ReportAiPanel({
           companyData.disclosures.filter((d) => typeof d.epsImpactScore === "number").length)
       : null
   const displayEps = avgEps ?? epsScore ?? null
+  const moveStats = getIssueMoveStats(companyData)
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-800 bg-slate-900/90 p-5 text-sm text-slate-100 shadow-xl">
@@ -174,14 +178,19 @@ export function ReportAiPanel({
             </CardHeader>
             <CardContent className="p-0 pt-2">
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold tabular-nums text-sky-400">–</span>
+                <span className="text-2xl font-bold tabular-nums text-sky-400">
+                  {moveStats.scoreLabel}
+                </span>
                 <span className="text-[11px] text-slate-500">/ 100</span>
               </div>
               <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800">
-                <div className="h-1.5 w-2/5 rounded-full bg-linear-to-r from-emerald-400 via-sky-400 to-amber-300" />
+                <div
+                  className="h-1.5 rounded-full bg-linear-to-r from-emerald-400 via-sky-400 to-amber-300"
+                  style={{ width: `${moveStats.barWidth}%` }}
+                />
               </div>
               <p className="mt-2 leading-relaxed text-[11px] text-slate-500">
-                추후 가격·수급 데이터 연동 시 공시/뉴스 반응 기반 점수를 표시합니다.
+                {moveStats.description}
               </p>
             </CardContent>
           </Card>
@@ -341,6 +350,17 @@ export function ReportAiPanel({
                   {normalizedText}
                 </ReactMarkdown>
               </div>
+            ) : loading ? (
+              <div className="px-4 py-6">
+                <div className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-300">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />
+                  실시간 수집 및 리포트 생성 중
+                </div>
+                <p className="mt-3 text-xs text-slate-400">
+                  종목 데이터 수집 → DB 반영 → 비교 분석 → 리포트 작성 순서로 진행됩니다.
+                </p>
+                <AnalysisLoading />
+              </div>
             ) : (
               <div className="flex flex-col gap-4 px-4 py-6">
                 <p className="leading-relaxed text-slate-500">
@@ -387,4 +407,28 @@ function normalizeReportMarkdown(input: string): string {
     out.push(line)
   }
   return out.join("\n")
+}
+
+function getIssueMoveStats(companyData?: CompanyRawResponse | null): {
+  score: number | null
+  scoreLabel: string
+  barWidth: number
+  description: string
+} {
+  const calculated = calculateIssueScore(companyData?.issueMoves)
+  if (!calculated.total) {
+    return {
+      score: null,
+      scoreLabel: "–",
+      barWidth: 0,
+      description: "이슈 급등락 데이터가 아직 없어 점수를 계산할 수 없습니다.",
+    }
+  }
+
+  return {
+    score: calculated.score,
+    scoreLabel: calculated.scoreLabel,
+    barWidth: calculated.barWidth,
+    description: `최근 라벨 ${calculated.total}건 기준 (급등 ${calculated.surgeRate.toFixed(1)}% / 급락 ${calculated.dropRate.toFixed(1)}%).`,
+  }
 }

@@ -48,6 +48,10 @@ function AccountPanel() {
   const [credits, setCredits] = useState<number | null>(null)
   const [reportCount, setReportCount] = useState<number | null>(null)
   const [freeUsed, setFreeUsed] = useState<boolean | null>(null)
+  const [usageGenerated, setUsageGenerated] = useState<number | null>(null)
+  const [usageInputTokens, setUsageInputTokens] = useState<number | null>(null)
+  const [usageOutputTokens, setUsageOutputTokens] = useState<number | null>(null)
+  const [usageCostKrw, setUsageCostKrw] = useState<number | null>(null)
   const [billingLoading, setBillingLoading] = useState(false)
 
   useEffect(() => {
@@ -56,6 +60,10 @@ function AccountPanel() {
         setCredits(null)
         setReportCount(null)
         setFreeUsed(null)
+        setUsageGenerated(null)
+        setUsageInputTokens(null)
+        setUsageOutputTokens(null)
+        setUsageCostKrw(null)
         return
       }
       const res = await fetch("/api/me")
@@ -64,6 +72,10 @@ function AccountPanel() {
       setCredits(json.credits)
       setReportCount(json.reportCount)
       setFreeUsed(json.freeReportUsed)
+      setUsageGenerated(json.usage?.generated ?? 0)
+      setUsageInputTokens(json.usage?.inputTokens ?? 0)
+      setUsageOutputTokens(json.usage?.outputTokens ?? 0)
+      setUsageCostKrw(json.usage?.costKrw ?? 0)
     }
     run()
   }, [status])
@@ -128,6 +140,36 @@ function AccountPanel() {
                 <div className="text-[10px] uppercase tracking-wider text-slate-500">Free</div>
                 <div className="mt-1 text-base font-semibold text-slate-100">
                   {freeUsed == null ? "–" : freeUsed ? "사용" : "가능"}
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-md bg-slate-900/60 px-3 py-2 text-xs">
+              <div className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">
+                AI Usage (Report)
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                <div>
+                  생성 기록:{" "}
+                  <span className="font-semibold text-slate-100">{usageGenerated ?? "–"}</span>
+                </div>
+                <div>
+                  예상 비용:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {usageCostKrw == null ? "–" : `${usageCostKrw.toLocaleString()} KRW`}
+                  </span>
+                </div>
+                <div>
+                  입력 토큰:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {usageInputTokens == null ? "–" : usageInputTokens.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  출력 토큰:{" "}
+                  <span className="font-semibold text-slate-100">
+                    {usageOutputTokens == null ? "–" : usageOutputTokens.toLocaleString()}
+                  </span>
                 </div>
               </div>
             </div>
